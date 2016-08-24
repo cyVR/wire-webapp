@@ -221,6 +221,7 @@ class z.tracking.EventTrackingRepository
   _disable_error_reporting: ->
     @logger.log @logger.levels.INFO, 'Disabling Raygun error reporting'
     Raygun.detach()
+    @_detach_unhandled_rejected_promises()
 
   _enable_error_reporting: ->
     @logger.log @logger.levels.INFO, 'Enabling Raygun error reporting'
@@ -246,6 +247,25 @@ class z.tracking.EventTrackingRepository
     Raygun.setVersion z.util.Environment.version false if not z.util.Environment.frontend.is_localhost()
     Raygun.withCustomData {electron_version: z.util.Environment.version true} if z.util.Environment.electron
     Raygun.onBeforeSend @_check_error_payload
+    @_attach_unhandled_rejected_promises()
+
+  # Attach to rejected Promises.
+  _attach_unhandled_rejected_promises: ->
+    window.onunhandledrejection = (event) =>
+      return if not window.onerror
+
+      error = event.reason
+      if _.isObject error
+        window.onerror.call @, error.message, error.fileName, error.lineNumber, error.columnNumber, error
+      else
+        window.onerror.call @, error, undefined, undefined, undefined, undefined, error
+
+      promise = event.promise
+      if promise
+        promise.catch => @logger.log @logger.levels.OFF, 'Handled uncaught Promise in error reporting'
+
+  _detach_unhandled_rejected_promises: ->
+    window.onunhandledrejection = undefined
 
   ###
   Checks if a Raygun payload has been already reported.
